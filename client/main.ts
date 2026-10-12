@@ -1,5 +1,9 @@
-// The browser side: read the keyboard and mouse, send them to the server,
-// and draw whatever game state the server sends back.
+// The browser side: shows the menu, reads the keyboard and mouse, and draws the game.
+//
+// There are two ways to play:
+// - Play: the server runs the game. We send it our input and draw the state it sends back.
+// - Training: no server. We run the game rules from shared/game.ts ourselves,
+//   against a target dummy that never moves.
 
 import {
   ARENA_WIDTH,
@@ -8,7 +12,9 @@ import {
   MAX_HEALTH,
   DASH_MAX_CHARGE,
   arrowRange,
+  createPlayer,
   dashDistance,
+  step,
   type Arrow,
   type GameState,
   type Input,
@@ -25,17 +31,53 @@ const ctx = canvas.getContext("2d")!;
 canvas.width = ARENA_WIDTH;
 canvas.height = ARENA_HEIGHT;
 
-// ---- Talking to the server ----
-
-let socket: WebSocket;
-let myId = 0; // which player we are; the server tells us
+let mode: "menu" | "play" | "training" = "menu";
+let myId = 0; // which player we are
 let state: GameState = { players: [], arrows: [] };
-let statusText = "Connecting...";
+
+// ---- Menu ----
+
+const menu = document.getElementById("menu")!;
+document.getElementById("play-button")!.addEventListener("click", startPlay);
+document.getElementById("training-button")!.addEventListener("click", startTraining);
+
+function startPlay() {
+  mode = "play";
+  menu.hidden = true;
+  statusText = "Connecting...";
+  connect();
+}
+
+function startTraining() {
+  mode = "training";
+  menu.hidden = true;
+  myId = 1;
+  // Player 2 is the target dummy: it never gets any input, so it just stands there
+  state = { players: [createPlayer(1), createPlayer(2)], arrows: [] };
+}
+
+function openMenu() {
+  mode = "menu";
+  menu.hidden = false;
+  disconnect();
+  state = { players: [], arrows: [] };
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Escape") openMenu();
+});
+
+// ---- Talking to the server (Play mode only) ----
+
+let socket: WebSocket | null = null;
+let statusText = "";
+let reconnectTimer = 0;
 
 function connect() {
-  socket = new WebSocket(SERVER_URL);
+  const ws = new WebSocket(SERVER_URL);
+  socket = ws;
 
-  socket.onmessage = (event) => {
+  ws.onmessage = (event) => {
     const message = JSON.parse(event.data);
     if (message.type === "welcome") {
       myId = message.id;
@@ -47,14 +89,19 @@ function connect() {
   };
 
   // The server restarts whenever you edit its code, so keep trying to reconnect
-  socket.onclose = (event) => {
+  ws.onclose = (event) => {
+    if (socket !== ws) return; // we closed it ourselves by going back to the menu
     state = { players: [], arrows: [] };
     statusText = `${event.reason || "Disconnected"}, retrying...`;
-    setTimeout(connect, 1000);
+    reconnectTimer = window.setTimeout(connect, 1000);
   };
 }
 
-connect();
+function disconnect() {
+  clearTimeout(reconnectTimer);
+  socket?.close();
+  socket = null;
+}
 
 // ---- Reading the keyboard and mouse ----
 
@@ -69,9 +116,10 @@ const input: Input = {
   aimY: 0,
 };
 
-// Send the input every time it changes; the server keeps the latest one.
+// In Play mode, send the input every time it changes; the server keeps the latest one.
+// (In Training mode there is no socket, and the game loop below reads `input` directly.)
 function sendInput() {
-  if (socket.readyState === WebSocket.OPEN) {
+  if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(input));
   }
 }
@@ -115,6 +163,26 @@ window.addEventListener("blur", () => {
   sendInput();
 });
 
+// ---- Game loop: runs once per screen refresh ----
+
+let lastTime = 0;
+
+function frame(time: number) {
+  // Seconds since the last frame, capped so switching tabs doesn't cause a big jump
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+
+  // In Training mode we run the game rules here, exactly like the server does in Play mode
+  if (mode === "training") {
+    step(state, { [myId]: input }, dt);
+  }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+
 // ---- Drawing ----
 
 function draw() {
@@ -123,14 +191,12 @@ function draw() {
   for (const arrow of state.arrows) drawArrow(arrow);
   for (const player of state.players) drawPlayer(player);
 
-  let message = statusText;
-  if (!message && state.players.length < 2) message = "Waiting for another player...";
-  if (message) drawStatus(message);
-
-  requestAnimationFrame(draw);
+  if (mode === "play") {
+    let message = statusText;
+    if (!message && state.players.length < 2) message = "Waiting for another player...";
+    if (message) drawStatus(message);
+  }
 }
-
-requestAnimationFrame(draw);
 
 function drawPlayer(p: Player) {
   const color = p.id === myId ? "#4fc3f7" : "#ef5350"; // you are blue, the enemy is red

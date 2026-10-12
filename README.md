@@ -9,21 +9,29 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in two browser windows, one for each player.
+Open http://localhost:5173 and pick a mode from the menu:
+
+- **Play**: a two-player match. Open a second browser window and click Play there too.
+- **Training**: just you and a target dummy that stands still. Runs entirely in the browser, no server needed.
+
+Controls:
 
 - **WASD**: move
 - **Hold Shift**: charge a dash, release to dash toward the mouse
 - **Hold left mouse**: charge an arrow, release to shoot
+- **Esc**: back to the menu
 
 ## How it fits together
 
 ```
 shared/game.ts   The game rules and tuning numbers. Used by both sides.
 server/server.ts Runs the real game at 60 updates/sec and sends the state to both players.
-client/main.ts   Sends your keys/mouse to the server and draws the state it gets back.
+client/main.ts   The menu, keyboard/mouse input, drawing, and the Training mode loop.
 ```
 
-The browser never decides what happens. It only sends input and draws. The server runs the rules, so both players always see the same result.
+In Play mode the browser never decides what happens. It only sends input and draws. The server runs the rules, so both players always see the same result.
+
+In Training mode the browser runs the same rules from `shared/game.ts` itself, so it plays exactly like a real match.
 
 ## Changing things
 

@@ -15,16 +15,60 @@
         color: #aaa;
         font-family: sans-serif;
       }
+      #arena {
+        position: relative; /* so the menu can sit on top of the canvas */
+        max-width: 100%;
+      }
       canvas {
+        display: block;
         max-width: 100%;
         background: #1e1e24;
         cursor: crosshair;
       }
+      #menu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        background: rgba(0, 0, 0, 0.6);
+      }
+      #menu[hidden] {
+        display: none;
+      }
+      #menu h1 {
+        color: white;
+        margin: 0 0 12px;
+      }
+      #menu button {
+        width: 200px;
+        padding: 10px;
+        font-size: 20px;
+        border: none;
+        border-radius: 6px;
+        background: #4fc3f7;
+        cursor: pointer;
+      }
+      #menu button:hover {
+        background: #81d4fa;
+      }
     </style>
   </head>
   <body>
-    <canvas id="game"></canvas>
-    <p>You are blue &middot; WASD to move &middot; hold Shift to charge a dash &middot; hold the mouse to charge an arrow</p>
+    <div id="arena">
+      <canvas id="game"></canvas>
+      <div id="menu">
+        <h1>Arena</h1>
+        <button id="play-button">Play</button>
+        <button id="training-button">Training</button>
+      </div>
+    </div>
+    <p>
+      You are blue &middot; WASD to move &middot; hold Shift to charge a dash &middot;
+      hold the mouse to charge an arrow &middot; Esc for the menu
+    </p>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
