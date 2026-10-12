@@ -25,6 +25,13 @@ export const ARROW_RADIUS = 5;
 export const ARROW_DAMAGE = 20;
 export const ARROW_COOLDOWN = 0.3; // seconds
 
+export const BLAST_RANGE = 400; // furthest away you can place the mark
+export const BLAST_RADIUS = 25; // a bit bigger than a player
+export const BLAST_DELAY = 0.8; // seconds between placing the mark and the explosion
+export const BLAST_DAMAGE = 30;
+export const BLAST_COOLDOWN = 4; // seconds
+export const BLAST_FLASH_TIME = 0.25; // how long the explosion stays visible
+
 // ---- Data ----
 
 // What a player is pressing right now. The browser sends this to the server.
@@ -35,6 +42,7 @@ export interface Input {
   right: boolean;
   dash: boolean; // Shift is held
   shoot: boolean; // mouse button is held
+  blast: boolean; // E is held
   aimX: number; // mouse position in the arena
   aimY: number;
 }
@@ -51,6 +59,7 @@ export interface Player {
   dashAngle: number; // direction of the dash currently happening
   arrowCharge: number; // seconds the mouse has been held (0 = not charging)
   arrowCooldown: number; // seconds until the next arrow is allowed
+  blastCooldown: number; // seconds until the next blast is allowed
 }
 
 export interface Arrow {
@@ -61,9 +70,23 @@ export interface Arrow {
   distanceLeft: number; // the arrow disappears when this reaches 0
 }
 
+// A marked spot on the ground that explodes after a short delay
+export interface Blast {
+  ownerId: number; // who placed it, so it can't hurt its owner
+  x: number;
+  y: number;
+  timeLeft: number; // seconds until it explodes; goes negative while the explosion is shown
+  exploded: boolean; // so it only deals damage once
+}
+
 export interface GameState {
   players: Player[];
   arrows: Arrow[];
+  blasts: Blast[];
+}
+
+export function createGameState(): GameState {
+  return { players: [], arrows: [], blasts: [] };
 }
 
 // ---- Helpers ----
@@ -93,6 +116,7 @@ export function createPlayer(id: number): Player {
     dashAngle: 0,
     arrowCharge: 0,
     arrowCooldown: 0,
+    blastCooldown: 0,
   };
 }
 
@@ -109,6 +133,7 @@ export function step(state: GameState, inputs: Record<number, Input>, dt: number
     if (input) updatePlayer(state, player, input, dt);
   }
   updateArrows(state, dt);
+  updateBlasts(state, dt);
 }
 
 function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
@@ -116,6 +141,7 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
 
   p.dashCooldown = Math.max(0, p.dashCooldown - dt);
   p.arrowCooldown = Math.max(0, p.arrowCooldown - dt);
+  p.blastCooldown = Math.max(0, p.blastCooldown - dt);
 
   if (p.dashTimeLeft > 0) {
     // Mid-dash: fly in the dash direction, ignoring WASD
@@ -139,6 +165,7 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
 
   updateDash(p, input, dt);
   updateBow(state, p, input, dt);
+  updateBlastCast(state, p, input);
 }
 
 // Hold Shift to charge, release to dash toward the mouse.
@@ -172,6 +199,30 @@ function updateBow(state: GameState, p: Player, input: Input, dt: number) {
   }
 }
 
+// Press E to mark the ground at the mouse (up to BLAST_RANGE away).
+function updateBlastCast(state: GameState, p: Player, input: Input) {
+  if (!input.blast || p.blastCooldown > 0) return;
+
+  const mouseDistance = Math.hypot(input.aimX - p.x, input.aimY - p.y);
+  const distance = Math.min(mouseDistance, BLAST_RANGE);
+  state.blasts.push({
+    ownerId: p.id,
+    x: clamp(p.x + Math.cos(p.aimAngle) * distance, 0, ARENA_WIDTH),
+    y: clamp(p.y + Math.sin(p.aimAngle) * distance, 0, ARENA_HEIGHT),
+    timeLeft: BLAST_DELAY,
+    exploded: false,
+  });
+  p.blastCooldown = BLAST_COOLDOWN;
+}
+
+// Lowers a player's health, and respawns them at the start if it runs out.
+function damage(p: Player, amount: number) {
+  p.health -= amount;
+  if (p.health <= 0) {
+    Object.assign(p, createPlayer(p.id));
+  }
+}
+
 function updateArrows(state: GameState, dt: number) {
   for (const arrow of state.arrows) {
     const move = Math.min(ARROW_SPEED * dt, arrow.distanceLeft);
@@ -184,10 +235,7 @@ function updateArrows(state: GameState, dt: number) {
 
       const distance = Math.hypot(p.x - arrow.x, p.y - arrow.y);
       if (distance < PLAYER_RADIUS + ARROW_RADIUS) {
-        p.health -= ARROW_DAMAGE;
-        if (p.health <= 0) {
-          Object.assign(p, createPlayer(p.id)); // respawn at the start
-        }
+        damage(p, ARROW_DAMAGE);
         arrow.distanceLeft = 0; // used up
         break;
       }
@@ -196,4 +244,23 @@ function updateArrows(state: GameState, dt: number) {
 
   // Remove arrows that hit someone or flew their full range
   state.arrows = state.arrows.filter((arrow) => arrow.distanceLeft > 0);
+}
+
+function updateBlasts(state: GameState, dt: number) {
+  for (const blast of state.blasts) {
+    blast.timeLeft -= dt;
+
+    if (blast.timeLeft <= 0 && !blast.exploded) {
+      blast.exploded = true;
+      // Hurt every enemy that touches the circle
+      for (const p of state.players) {
+        if (p.id === blast.ownerId) continue;
+        const distance = Math.hypot(p.x - blast.x, p.y - blast.y);
+        if (distance < PLAYER_RADIUS + BLAST_RADIUS) damage(p, BLAST_DAMAGE);
+      }
+    }
+  }
+
+  // Keep exploded blasts around for a moment so players can see the explosion
+  state.blasts = state.blasts.filter((blast) => blast.timeLeft > -BLAST_FLASH_TIME);
 }

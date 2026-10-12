@@ -19,7 +19,10 @@ Controls:
 - **WASD**: move
 - **Hold Shift**: charge a dash, release to dash toward the mouse
 - **Hold left mouse**: charge an arrow, release to shoot
+- **E**: mark the ground at the mouse; it explodes shortly after and damages enemies inside
 - **Esc**: back to the menu
+
+The bar at the bottom shows each ability's cooldown.
 
 ## How it fits together
 

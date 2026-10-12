@@ -2,12 +2,12 @@
 // runs the game rules from shared/game.ts, and sends the result to everyone.
 
 import { WebSocketServer, WebSocket } from "ws";
-import { createPlayer, step, type GameState, type Input } from "../shared/game";
+import { createGameState, createPlayer, step, type Input } from "../shared/game";
 
 const PORT = 3000;
 const TICK_RATE = 60; // game updates per second
 
-const state: GameState = { players: [], arrows: [] };
+const state = createGameState();
 const inputs: Record<number, Input> = {}; // latest input from each player, by id
 
 const server = new WebSocketServer({ port: PORT });
