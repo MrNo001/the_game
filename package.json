@@ -1,0 +1,21 @@
+{
+  "name": "the-game",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"tsx watch server/server.ts\" \"vite\"",
+    "share": "concurrently -n server,client,tunnel -c blue,green,magenta \"tsx watch server/server.ts\" \"vite\" \"cloudflared tunnel --url http://localhost:5173\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.4"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

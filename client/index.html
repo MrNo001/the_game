@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arena Prototype</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #111;
+        color: #aaa;
+        font-family: sans-serif;
+      }
+      canvas {
+        max-width: 100%;
+        background: #1e1e24;
+        cursor: crosshair;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <p>You are blue &middot; WASD to move &middot; hold Shift to charge a dash &middot; hold the mouse to charge an arrow</p>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
