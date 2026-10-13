@@ -13,11 +13,13 @@ import {
   DASH_MAX_CHARGE,
   DASH_COOLDOWN,
   ARROW_COOLDOWN,
-  BLAST_RADIUS,
   BLAST_DELAY,
   BLAST_COOLDOWN,
   BLAST_FLASH_TIME,
   arrowRange,
+  blastRadius,
+  blastRange,
+  blastTarget,
   createGameState,
   createPlayer,
   dashDistance,
@@ -228,6 +230,33 @@ function drawPlayer(p: Player) {
   ctx.stroke();
   ctx.setLineDash([]);
 
+  // Blast preview: a faint ring showing how far you can reach,
+  // and a dashed circle where the mark will land and how big it will be
+  if (p.blastCharge > 0) {
+    const target = blastTarget(p);
+    const radius = blastRadius(p.blastCharge);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, blastRange(p.blastCharge), 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // Dash preview: a see-through circle where you will land
   if (p.dashCharge > 0) {
     const distance = dashDistance(p.dashCharge);
@@ -284,13 +313,13 @@ function drawBlast(blast: Blast) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(blast.x, blast.y, BLAST_RADIUS, 0, Math.PI * 2);
+    ctx.arc(blast.x, blast.y, blast.radius, 0, Math.PI * 2);
     ctx.stroke();
 
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(blast.x, blast.y, BLAST_RADIUS * progress, 0, Math.PI * 2);
+    ctx.arc(blast.x, blast.y, blast.radius * progress, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   } else {
@@ -299,7 +328,7 @@ function drawBlast(blast: Blast) {
     ctx.globalAlpha = Math.max(0, fade);
     ctx.fillStyle = "#ffb74d";
     ctx.beginPath();
-    ctx.arc(blast.x, blast.y, BLAST_RADIUS, 0, Math.PI * 2);
+    ctx.arc(blast.x, blast.y, blast.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }

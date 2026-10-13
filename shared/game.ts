@@ -25,8 +25,11 @@ export const ARROW_RADIUS = 5;
 export const ARROW_DAMAGE = 20;
 export const ARROW_COOLDOWN = 0.3; // seconds
 
-export const BLAST_RANGE = 400; // furthest away you can place the mark
-export const BLAST_RADIUS = 25; // a bit bigger than a player
+export const BLAST_MAX_CHARGE = 1; // seconds of holding E to reach full power
+export const BLAST_MIN_RANGE = 150; // furthest away you can place the mark with a quick tap
+export const BLAST_MAX_RANGE = 450; // furthest away you can place it at full power
+export const BLAST_MIN_RADIUS = 25; // a bit bigger than a player
+export const BLAST_MAX_RADIUS = 70;
 export const BLAST_DELAY = 0.8; // seconds between placing the mark and the explosion
 export const BLAST_DAMAGE = 30;
 export const BLAST_COOLDOWN = 4; // seconds
@@ -52,6 +55,7 @@ export interface Player {
   x: number;
   y: number;
   aimAngle: number; // radians, pointing at the mouse
+  aimDistance: number; // pixels from the player to the mouse
   health: number;
   dashCharge: number; // seconds Shift has been held (0 = not charging)
   dashCooldown: number; // seconds until the next dash is allowed
@@ -59,6 +63,7 @@ export interface Player {
   dashAngle: number; // direction of the dash currently happening
   arrowCharge: number; // seconds the mouse has been held (0 = not charging)
   arrowCooldown: number; // seconds until the next arrow is allowed
+  blastCharge: number; // seconds E has been held (0 = not charging)
   blastCooldown: number; // seconds until the next blast is allowed
 }
 
@@ -75,6 +80,7 @@ export interface Blast {
   ownerId: number; // who placed it, so it can't hurt its owner
   x: number;
   y: number;
+  radius: number; // bigger the longer E was held
   timeLeft: number; // seconds until it explodes; goes negative while the explosion is shown
   exploded: boolean; // so it only deals damage once
 }
@@ -102,6 +108,25 @@ export function arrowRange(charge: number): number {
   return ARROW_MIN_RANGE + power * (ARROW_MAX_RANGE - ARROW_MIN_RANGE);
 }
 
+export function blastRange(charge: number): number {
+  const power = charge / BLAST_MAX_CHARGE; // 0 to 1
+  return BLAST_MIN_RANGE + power * (BLAST_MAX_RANGE - BLAST_MIN_RANGE);
+}
+
+export function blastRadius(charge: number): number {
+  const power = charge / BLAST_MAX_CHARGE; // 0 to 1
+  return BLAST_MIN_RADIUS + power * (BLAST_MAX_RADIUS - BLAST_MIN_RADIUS);
+}
+
+// Where the mark lands if E is released now: at the mouse, but no further than the current range.
+export function blastTarget(p: Player): { x: number; y: number } {
+  const distance = Math.min(p.aimDistance, blastRange(p.blastCharge));
+  return {
+    x: clamp(p.x + Math.cos(p.aimAngle) * distance, 0, ARENA_WIDTH),
+    y: clamp(p.y + Math.sin(p.aimAngle) * distance, 0, ARENA_HEIGHT),
+  };
+}
+
 // Player 1 starts on the left, player 2 on the right.
 export function createPlayer(id: number): Player {
   return {
@@ -109,6 +134,7 @@ export function createPlayer(id: number): Player {
     x: id === 1 ? 200 : ARENA_WIDTH - 200,
     y: ARENA_HEIGHT / 2,
     aimAngle: id === 1 ? 0 : Math.PI,
+    aimDistance: 0,
     health: MAX_HEALTH,
     dashCharge: 0,
     dashCooldown: 0,
@@ -116,6 +142,7 @@ export function createPlayer(id: number): Player {
     dashAngle: 0,
     arrowCharge: 0,
     arrowCooldown: 0,
+    blastCharge: 0,
     blastCooldown: 0,
   };
 }
@@ -138,6 +165,7 @@ export function step(state: GameState, inputs: Record<number, Input>, dt: number
 
 function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
   p.aimAngle = Math.atan2(input.aimY - p.y, input.aimX - p.x);
+  p.aimDistance = Math.hypot(input.aimX - p.x, input.aimY - p.y);
 
   p.dashCooldown = Math.max(0, p.dashCooldown - dt);
   p.arrowCooldown = Math.max(0, p.arrowCooldown - dt);
@@ -165,7 +193,7 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
 
   updateDash(p, input, dt);
   updateBow(state, p, input, dt);
-  updateBlastCast(state, p, input);
+  updateBlastCast(state, p, input, dt);
 }
 
 // Hold Shift to charge, release to dash toward the mouse.
@@ -199,20 +227,25 @@ function updateBow(state: GameState, p: Player, input: Input, dt: number) {
   }
 }
 
-// Press E to mark the ground at the mouse (up to BLAST_RANGE away).
-function updateBlastCast(state: GameState, p: Player, input: Input) {
-  if (!input.blast || p.blastCooldown > 0) return;
-
-  const mouseDistance = Math.hypot(input.aimX - p.x, input.aimY - p.y);
-  const distance = Math.min(mouseDistance, BLAST_RANGE);
-  state.blasts.push({
-    ownerId: p.id,
-    x: clamp(p.x + Math.cos(p.aimAngle) * distance, 0, ARENA_WIDTH),
-    y: clamp(p.y + Math.sin(p.aimAngle) * distance, 0, ARENA_HEIGHT),
-    timeLeft: BLAST_DELAY,
-    exploded: false,
-  });
-  p.blastCooldown = BLAST_COOLDOWN;
+// Hold E to charge, release to mark the ground at the mouse.
+// The longer you hold, the further away you can place it and the bigger the explosion.
+function updateBlastCast(state: GameState, p: Player, input: Input, dt: number) {
+  if (input.blast && p.blastCooldown === 0) {
+    p.blastCharge = Math.min(p.blastCharge + dt, BLAST_MAX_CHARGE);
+  } else if (p.blastCharge > 0) {
+    // E was just released
+    const target = blastTarget(p);
+    state.blasts.push({
+      ownerId: p.id,
+      x: target.x,
+      y: target.y,
+      radius: blastRadius(p.blastCharge),
+      timeLeft: BLAST_DELAY,
+      exploded: false,
+    });
+    p.blastCooldown = BLAST_COOLDOWN;
+    p.blastCharge = 0;
+  }
 }
 
 // Lowers a player's health, and respawns them at the start if it runs out.
@@ -256,7 +289,7 @@ function updateBlasts(state: GameState, dt: number) {
       for (const p of state.players) {
         if (p.id === blast.ownerId) continue;
         const distance = Math.hypot(p.x - blast.x, p.y - blast.y);
-        if (distance < PLAYER_RADIUS + BLAST_RADIUS) damage(p, BLAST_DAMAGE);
+        if (distance < PLAYER_RADIUS + blast.radius) damage(p, BLAST_DAMAGE);
       }
     }
   }
