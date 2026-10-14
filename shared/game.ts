@@ -57,6 +57,7 @@ export interface Player {
   aimAngle: number; // radians, pointing at the mouse
   aimDistance: number; // pixels from the player to the mouse
   health: number;
+  score: number; // how many times this player has killed the other one
   dashCharge: number; // seconds Shift has been held (0 = not charging)
   dashCooldown: number; // seconds until the next dash is allowed
   dashTimeLeft: number; // seconds left in the dash currently happening
@@ -136,6 +137,7 @@ export function createPlayer(id: number): Player {
     aimAngle: id === 1 ? 0 : Math.PI,
     aimDistance: 0,
     health: MAX_HEALTH,
+    score: 0,
     dashCharge: 0,
     dashCooldown: 0,
     dashTimeLeft: 0,
@@ -248,11 +250,14 @@ function updateBlastCast(state: GameState, p: Player, input: Input, dt: number) 
   }
 }
 
-// Lowers a player's health, and respawns them at the start if it runs out.
-function damage(p: Player, amount: number) {
+// Lowers a player's health. If it runs out, the attacker scores a point
+// and the victim respawns at the start (keeping their own score).
+function damage(state: GameState, p: Player, amount: number, attackerId: number) {
   p.health -= amount;
   if (p.health <= 0) {
-    Object.assign(p, createPlayer(p.id));
+    const attacker = state.players.find((other) => other.id === attackerId);
+    if (attacker) attacker.score += 1;
+    Object.assign(p, createPlayer(p.id), { score: p.score });
   }
 }
 
@@ -268,7 +273,7 @@ function updateArrows(state: GameState, dt: number) {
 
       const distance = Math.hypot(p.x - arrow.x, p.y - arrow.y);
       if (distance < PLAYER_RADIUS + ARROW_RADIUS) {
-        damage(p, ARROW_DAMAGE);
+        damage(state, p, ARROW_DAMAGE, arrow.ownerId);
         arrow.distanceLeft = 0; // used up
         break;
       }
@@ -289,7 +294,7 @@ function updateBlasts(state: GameState, dt: number) {
       for (const p of state.players) {
         if (p.id === blast.ownerId) continue;
         const distance = Math.hypot(p.x - blast.x, p.y - blast.y);
-        if (distance < PLAYER_RADIUS + blast.radius) damage(p, BLAST_DAMAGE);
+        if (distance < PLAYER_RADIUS + blast.radius) damage(state, p, BLAST_DAMAGE, blast.ownerId);
       }
     }
   }

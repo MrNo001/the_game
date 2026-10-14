@@ -11,8 +11,8 @@ npm run dev
 
 Open http://localhost:5173 and pick a mode from the menu:
 
-- **Play**: a two-player match. Open a second browser window and click Play there too.
-- **Training**: just you and a target dummy that stands still. Runs entirely in the browser, no server needed.
+- **Play**: a two-player match. Open a second browser window and click Play there too. You score a point each time you kill the other player; the score resets when a new player joins.
+- **Training**: just you and a target dummy that stands still. Runs entirely in the browser, no server needed. Leave with the **Exit training** button or Esc.
 
 Controls:
 
@@ -22,7 +22,7 @@ Controls:
 - **Hold E**: charge a blast (the longer you hold, the further it reaches and the bigger it gets), release to mark the ground at the mouse; it explodes shortly after and damages enemies inside
 - **Esc**: back to the menu
 
-The bar at the bottom shows each ability's cooldown.
+The bar at the bottom shows each ability's cooldown, and the score in Play mode.
 
 ## How it fits together
 

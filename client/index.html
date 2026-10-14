@@ -54,6 +54,22 @@
       #menu button:hover {
         background: #81d4fa;
       }
+      #exit-button {
+        position: absolute; /* in the right corner of the ability bar */
+        right: 20px;
+        bottom: 22px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: bold;
+        color: white;
+        background: #2a2a33;
+        border: 2px solid #444;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      #exit-button:hover {
+        border-color: #4fc3f7;
+      }
     </style>
   </head>
   <body>
@@ -64,6 +80,7 @@
         <button id="play-button">Play</button>
         <button id="training-button">Training</button>
       </div>
+      <button id="exit-button" hidden>Exit training</button>
     </div>
     <p>
       You are blue &middot; WASD to move &middot; hold Shift to charge a dash &middot;

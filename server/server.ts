@@ -22,6 +22,8 @@ server.on("connection", (socket) => {
     return;
   }
 
+  // A new opponent means a new match, so everyone starts from zero
+  for (const p of state.players) p.score = 0;
   state.players.push(createPlayer(id));
   socket.send(JSON.stringify({ type: "welcome", id }));
   console.log(`Player ${id} joined`);

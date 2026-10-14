@@ -49,8 +49,10 @@ let state = createGameState();
 // ---- Menu ----
 
 const menu = document.getElementById("menu")!;
+const exitButton = document.getElementById("exit-button")!; // only shown in Training mode
 document.getElementById("play-button")!.addEventListener("click", startPlay);
 document.getElementById("training-button")!.addEventListener("click", startTraining);
+exitButton.addEventListener("click", openMenu);
 
 function startPlay() {
   mode = "play";
@@ -62,6 +64,7 @@ function startPlay() {
 function startTraining() {
   mode = "training";
   menu.hidden = true;
+  exitButton.hidden = false;
   myId = 1;
   // Player 2 is the target dummy: it never gets any input, so it just stands there
   state = createGameState();
@@ -71,6 +74,7 @@ function startTraining() {
 function openMenu() {
   mode = "menu";
   menu.hidden = false;
+  exitButton.hidden = true;
   disconnect();
   state = createGameState();
 }
@@ -387,6 +391,17 @@ function drawHud() {
     ctx.fillText(ability.key, x + size / 2, y + size - 7);
 
     x += size + gap;
+  }
+
+  // Score (Play mode only): your kills on top, the enemy's below
+  if (mode === "play") {
+    const enemy = state.players.find((p) => p.id !== myId);
+    ctx.textAlign = "left";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillStyle = "#4fc3f7";
+    ctx.fillText(`You  ${me.score}`, 24, ARENA_HEIGHT + 34);
+    ctx.fillStyle = "#ef5350";
+    ctx.fillText(`Enemy  ${enemy?.score ?? 0}`, 24, ARENA_HEIGHT + 62);
   }
 }
 
