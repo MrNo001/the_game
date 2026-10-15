@@ -16,6 +16,11 @@ import {
   BLAST_DELAY,
   BLAST_COOLDOWN,
   BLAST_FLASH_TIME,
+  SHOTGUN_RANGE,
+  SHOTGUN_SPREAD,
+  SHOTGUN_SHELLS,
+  SHOTGUN_RELOAD_TIME,
+  SHOTGUN_FLASH_TIME,
   arrowRange,
   blastRadius,
   blastRange,
@@ -28,6 +33,7 @@ import {
   type Blast,
   type Input,
   type Player,
+  type Shot,
 } from "../shared/game";
 
 // Connect through the same address the page came from; Vite forwards /ws to the game server.
@@ -128,6 +134,7 @@ const input: Input = {
   right: false,
   dash: false,
   shoot: false,
+  shotgun: false,
   blast: false,
   aimX: 0,
   aimY: 0,
@@ -162,22 +169,26 @@ window.addEventListener("mousemove", (e) => {
   sendInput();
 });
 
+// Left button charges the bow, right button fires the shotgun
 canvas.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return; // left button only
-  input.shoot = true;
+  if (e.button === 0) input.shoot = true;
+  if (e.button === 2) input.shotgun = true;
   sendInput();
 });
 
 window.addEventListener("mouseup", (e) => {
-  if (e.button !== 0) return;
-  input.shoot = false;
+  if (e.button === 0) input.shoot = false;
+  if (e.button === 2) input.shotgun = false;
   sendInput();
 });
+
+// Don't open the browser's right-click menu over the arena
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 // When the window loses focus we never hear the key-up, so release everything
 window.addEventListener("blur", () => {
   input.up = input.down = input.left = input.right = false;
-  input.dash = input.shoot = input.blast = false;
+  input.dash = input.shoot = input.shotgun = input.blast = false;
   sendInput();
 });
 
@@ -208,6 +219,7 @@ function draw() {
 
   for (const blast of state.blasts) drawBlast(blast); // first, so they look like they're on the ground
   for (const arrow of state.arrows) drawArrow(arrow);
+  for (const shot of state.shots) drawShot(shot);
   for (const player of state.players) drawPlayer(player);
   drawHud();
 
@@ -297,6 +309,24 @@ function drawPlayer(p: Player) {
   ctx.fillRect(barX, barY, barWidth, 5);
   ctx.fillStyle = "#66bb6a";
   ctx.fillRect(barX, barY, barWidth * (p.health / MAX_HEALTH), 5);
+
+  // Shotgun shells above the health bar: bright = loaded.
+  // While reloading, the empty shells slowly fill up from the bottom.
+  const shellWidth = 6;
+  const shellHeight = 10;
+  const shellGap = 4;
+  const shellsWidth = SHOTGUN_SHELLS * shellWidth + (SHOTGUN_SHELLS - 1) * shellGap;
+  const shellY = barY - shellHeight - 4;
+  const reloaded = p.shotgunReload > 0 ? 1 - p.shotgunReload / SHOTGUN_RELOAD_TIME : 0; // 0 to 1
+  for (let i = 0; i < SHOTGUN_SHELLS; i++) {
+    const shellX = p.x - shellsWidth / 2 + i * (shellWidth + shellGap);
+    const loaded = i < p.shells;
+    const fill = loaded ? 1 : reloaded;
+    ctx.fillStyle = "#333";
+    ctx.fillRect(shellX, shellY, shellWidth, shellHeight);
+    ctx.fillStyle = loaded ? "#ff7043" : "#795548";
+    ctx.fillRect(shellX, shellY + shellHeight * (1 - fill), shellWidth, shellHeight * fill);
+  }
 }
 
 function drawArrow(arrow: Arrow) {
@@ -338,6 +368,19 @@ function drawBlast(blast: Blast) {
   }
 }
 
+// The shotgun blast: a bright cone that quickly fades out
+function drawShot(shot: Shot) {
+  const fade = shot.timeLeft / SHOTGUN_FLASH_TIME; // 1 down to 0
+  ctx.globalAlpha = 0.7 * fade;
+  ctx.fillStyle = "#ffb74d";
+  ctx.beginPath();
+  ctx.moveTo(shot.x, shot.y);
+  ctx.arc(shot.x, shot.y, SHOTGUN_RANGE, shot.angle - SHOTGUN_SPREAD / 2, shot.angle + SHOTGUN_SPREAD / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
 // The ability bar in the strip below the arena
 function drawHud() {
   const me = state.players.find((p) => p.id === myId);
@@ -348,7 +391,8 @@ function drawHud() {
 
   const abilities = [
     { key: "Shift", name: "Dash", cooldown: me.dashCooldown, maxCooldown: DASH_COOLDOWN },
-    { key: "Mouse", name: "Arrow", cooldown: me.arrowCooldown, maxCooldown: ARROW_COOLDOWN },
+    { key: "L-Click", name: "Arrow", cooldown: me.arrowCooldown, maxCooldown: ARROW_COOLDOWN },
+    { key: "R-Click", name: "Shotgun", cooldown: me.shotgunReload, maxCooldown: SHOTGUN_RELOAD_TIME },
     { key: "E", name: "Blast", cooldown: me.blastCooldown, maxCooldown: BLAST_COOLDOWN },
   ];
 

@@ -35,6 +35,14 @@ export const BLAST_DAMAGE = 30;
 export const BLAST_COOLDOWN = 4; // seconds
 export const BLAST_FLASH_TIME = 0.25; // how long the explosion stays visible
 
+export const SHOTGUN_RANGE = 120; // very short: you have to be nearly on top of them
+export const SHOTGUN_SPREAD = Math.PI / 3; // width of the cone (60 degrees)
+export const SHOTGUN_DAMAGE = 35;
+export const SHOTGUN_SHELLS = 2; // shots before you have to reload
+export const SHOTGUN_RELOAD_TIME = 5; // seconds to refill both shells once they're used up
+export const SHOTGUN_KNOCKBACK = DASH_MAX_DISTANCE / 2; // how far the recoil throws you backwards
+export const SHOTGUN_FLASH_TIME = 0.15; // how long the muzzle blast stays visible
+
 // ---- Data ----
 
 // What a player is pressing right now. The browser sends this to the server.
@@ -44,7 +52,8 @@ export interface Input {
   left: boolean;
   right: boolean;
   dash: boolean; // Shift is held
-  shoot: boolean; // mouse button is held
+  shoot: boolean; // left mouse button is held
+  shotgun: boolean; // right mouse button is held
   blast: boolean; // E is held
   aimX: number; // mouse position in the arena
   aimY: number;
@@ -66,6 +75,9 @@ export interface Player {
   arrowCooldown: number; // seconds until the next arrow is allowed
   blastCharge: number; // seconds E has been held (0 = not charging)
   blastCooldown: number; // seconds until the next blast is allowed
+  shells: number; // shotgun shells left in the chamber
+  shotgunReload: number; // seconds until the shells are refilled (0 = not reloading)
+  shotgunHeld: boolean; // right mouse was held last update, so one click fires one shot
 }
 
 export interface Arrow {
@@ -86,14 +98,23 @@ export interface Blast {
   exploded: boolean; // so it only deals damage once
 }
 
+// A shotgun blast. The damage happens the moment it's fired; this is only kept around to draw it.
+export interface Shot {
+  x: number;
+  y: number;
+  angle: number; // direction the cone points
+  timeLeft: number; // seconds until it disappears
+}
+
 export interface GameState {
   players: Player[];
   arrows: Arrow[];
   blasts: Blast[];
+  shots: Shot[];
 }
 
 export function createGameState(): GameState {
-  return { players: [], arrows: [], blasts: [] };
+  return { players: [], arrows: [], blasts: [], shots: [] };
 }
 
 // ---- Helpers ----
@@ -146,6 +167,9 @@ export function createPlayer(id: number): Player {
     arrowCooldown: 0,
     blastCharge: 0,
     blastCooldown: 0,
+    shells: SHOTGUN_SHELLS,
+    shotgunReload: 0,
+    shotgunHeld: false,
   };
 }
 
@@ -163,6 +187,7 @@ export function step(state: GameState, inputs: Record<number, Input>, dt: number
   }
   updateArrows(state, dt);
   updateBlasts(state, dt);
+  updateShots(state, dt);
 }
 
 function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
@@ -196,6 +221,7 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
   updateDash(p, input, dt);
   updateBow(state, p, input, dt);
   updateBlastCast(state, p, input, dt);
+  updateShotgun(state, p, input, dt);
 }
 
 // Hold Shift to charge, release to dash toward the mouse.
@@ -250,6 +276,44 @@ function updateBlastCast(state: GameState, p: Player, input: Input, dt: number) 
   }
 }
 
+// Right-click fires a short cone toward the mouse. You get two shells;
+// once both are used, they reload together. The recoil throws you backwards.
+function updateShotgun(state: GameState, p: Player, input: Input, dt: number) {
+  if (p.shotgunReload > 0) {
+    p.shotgunReload = Math.max(0, p.shotgunReload - dt);
+    if (p.shotgunReload === 0) p.shells = SHOTGUN_SHELLS;
+  }
+
+  const clicked = input.shotgun && !p.shotgunHeld; // only on the click itself, not while held
+  p.shotgunHeld = input.shotgun;
+  if (!clicked || p.shells === 0) return;
+
+  p.shells -= 1;
+  if (p.shells === 0) p.shotgunReload = SHOTGUN_RELOAD_TIME;
+
+  state.shots.push({ x: p.x, y: p.y, angle: p.aimAngle, timeLeft: SHOTGUN_FLASH_TIME });
+  for (const other of state.players) {
+    if (other.id !== p.id && inShotgunCone(p, other)) damage(state, other, SHOTGUN_DAMAGE, p.id);
+  }
+
+  // Recoil: a dash in the opposite direction (this also cuts short a dash in progress)
+  p.dashAngle = p.aimAngle + Math.PI;
+  p.dashTimeLeft = SHOTGUN_KNOCKBACK / DASH_SPEED;
+}
+
+// Does the shooter's cone touch any part of the target's body?
+function inShotgunCone(shooter: Player, target: Player): boolean {
+  const distance = Math.hypot(target.x - shooter.x, target.y - shooter.y);
+  if (distance > SHOTGUN_RANGE + PLAYER_RADIUS) return false;
+
+  const angleToTarget = Math.atan2(target.y - shooter.y, target.x - shooter.x);
+  const difference = Math.abs(
+    Math.atan2(Math.sin(angleToTarget - shooter.aimAngle), Math.cos(angleToTarget - shooter.aimAngle)),
+  ); // 0 to PI, however the angles wrap around
+  const bodyWidth = Math.asin(Math.min(1, PLAYER_RADIUS / distance)); // so clipping the edge counts
+  return difference <= SHOTGUN_SPREAD / 2 + bodyWidth;
+}
+
 // Lowers a player's health. If it runs out, the attacker scores a point
 // and the victim respawns at the start (keeping their own score).
 function damage(state: GameState, p: Player, amount: number, attackerId: number) {
@@ -301,4 +365,9 @@ function updateBlasts(state: GameState, dt: number) {
 
   // Keep exploded blasts around for a moment so players can see the explosion
   state.blasts = state.blasts.filter((blast) => blast.timeLeft > -BLAST_FLASH_TIME);
+}
+
+function updateShots(state: GameState, dt: number) {
+  for (const shot of state.shots) shot.timeLeft -= dt;
+  state.shots = state.shots.filter((shot) => shot.timeLeft > 0);
 }
