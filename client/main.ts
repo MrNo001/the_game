@@ -136,9 +136,16 @@ const input: Input = {
   shoot: false,
   shotgun: false,
   blast: false,
+  move: false,
   aimX: 0,
   aimY: 0,
 };
+
+// Two ways to control your player, picked in the menu:
+// - classic: WASD to move, Shift dash, left click arrow, right click shotgun, E blast
+// - click: right click to move, left click arrow, Q shotgun, W dash, E blast
+type Controls = "classic" | "click";
+let controls: Controls = loadControls();
 
 // In Play mode, send the input every time it changes; the server keeps the latest one.
 // (In Training mode there is no socket, and the game loop below reads `input` directly.)
@@ -149,17 +156,28 @@ function sendInput() {
 }
 
 function setKey(code: string, pressed: boolean) {
-  if (code === "KeyW") input.up = pressed;
-  if (code === "KeyS") input.down = pressed;
-  if (code === "KeyA") input.left = pressed;
-  if (code === "KeyD") input.right = pressed;
-  if (code === "ShiftLeft" || code === "ShiftRight") input.dash = pressed;
+  if (controls === "classic") {
+    if (code === "KeyW") input.up = pressed;
+    if (code === "KeyS") input.down = pressed;
+    if (code === "KeyA") input.left = pressed;
+    if (code === "KeyD") input.right = pressed;
+    if (code === "ShiftLeft" || code === "ShiftRight") input.dash = pressed;
+  } else {
+    if (code === "KeyQ") input.shotgun = pressed;
+    if (code === "KeyW") input.dash = pressed;
+  }
   if (code === "KeyE") input.blast = pressed;
   sendInput();
 }
 
 window.addEventListener("keydown", (e) => setKey(e.code, true));
 window.addEventListener("keyup", (e) => setKey(e.code, false));
+
+// The right mouse button shoots in classic controls and walks in click-to-move controls
+function setRightButton(pressed: boolean) {
+  if (controls === "classic") input.shotgun = pressed;
+  else input.move = pressed;
+}
 
 window.addEventListener("mousemove", (e) => {
   // Convert from page coordinates to arena coordinates
@@ -169,28 +187,66 @@ window.addEventListener("mousemove", (e) => {
   sendInput();
 });
 
-// Left button charges the bow, right button fires the shotgun
+// The left button charges the bow in both control schemes
 canvas.addEventListener("mousedown", (e) => {
   if (e.button === 0) input.shoot = true;
-  if (e.button === 2) input.shotgun = true;
+  if (e.button === 2) setRightButton(true);
   sendInput();
 });
 
 window.addEventListener("mouseup", (e) => {
   if (e.button === 0) input.shoot = false;
-  if (e.button === 2) input.shotgun = false;
+  if (e.button === 2) setRightButton(false);
   sendInput();
 });
 
 // Don't open the browser's right-click menu over the arena
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// When the window loses focus we never hear the key-up, so release everything
-window.addEventListener("blur", () => {
+function releaseEverything() {
   input.up = input.down = input.left = input.right = false;
-  input.dash = input.shoot = input.shotgun = input.blast = false;
+  input.dash = input.shoot = input.shotgun = input.blast = input.move = false;
   sendInput();
-});
+}
+
+// When the window loses focus we never hear the key-up, so release everything
+window.addEventListener("blur", releaseEverything);
+
+// ---- Picking the control scheme (in the menu) ----
+
+const controlButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("#controls-picker button"));
+for (const button of controlButtons) {
+  button.addEventListener("click", () => setControls(button.dataset.controls as Controls));
+}
+showControls();
+
+function setControls(newControls: Controls) {
+  releaseEverything(); // so nothing stays stuck from the old key bindings
+  controls = newControls;
+  try {
+    localStorage.setItem("controls", controls);
+  } catch {
+    // Storage can be blocked (e.g. private windows); the choice just won't be remembered
+  }
+  showControls();
+}
+
+function loadControls(): Controls {
+  try {
+    return localStorage.getItem("controls") === "click" ? "click" : "classic";
+  } catch {
+    return "classic";
+  }
+}
+
+// Highlight the chosen scheme and show its help text below the arena
+function showControls() {
+  for (const button of controlButtons) {
+    button.classList.toggle("selected", button.dataset.controls === controls);
+  }
+  document.getElementById("help-classic")!.hidden = controls !== "classic";
+  document.getElementById("help-click")!.hidden = controls !== "click";
+}
 
 // ---- Game loop: runs once per screen refresh ----
 
@@ -271,6 +327,22 @@ function drawPlayer(p: Player) {
     ctx.arc(target.x, target.y, radius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  // Click-to-move: a small cross where you're walking to (only your own, so the enemy's stays secret)
+  if (p.id === myId && p.moveTarget) {
+    const { x, y } = p.moveTarget;
+    const size = 6;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(x - size, y - size);
+    ctx.lineTo(x + size, y + size);
+    ctx.moveTo(x + size, y - size);
+    ctx.lineTo(x - size, y + size);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // Dash preview: a see-through circle where you will land
@@ -389,12 +461,14 @@ function drawHud() {
   ctx.fillStyle = "#15151a";
   ctx.fillRect(0, ARENA_HEIGHT, ARENA_WIDTH, HUD_HEIGHT);
 
-  const abilities = [
-    { key: "Shift", name: "Dash", cooldown: me.dashCooldown, maxCooldown: DASH_COOLDOWN },
-    { key: "L-Click", name: "Arrow", cooldown: me.arrowCooldown, maxCooldown: ARROW_COOLDOWN },
-    { key: "R-Click", name: "Shotgun", cooldown: me.shotgunReload, maxCooldown: SHOTGUN_RELOAD_TIME },
-    { key: "E", name: "Blast", cooldown: me.blastCooldown, maxCooldown: BLAST_COOLDOWN },
-  ];
+  const dash = { name: "Dash", cooldown: me.dashCooldown, maxCooldown: DASH_COOLDOWN };
+  const arrow = { name: "Arrow", cooldown: me.arrowCooldown, maxCooldown: ARROW_COOLDOWN };
+  const shotgun = { name: "Shotgun", cooldown: me.shotgunReload, maxCooldown: SHOTGUN_RELOAD_TIME };
+  const blast = { name: "Blast", cooldown: me.blastCooldown, maxCooldown: BLAST_COOLDOWN };
+  const abilities =
+    controls === "classic"
+      ? [{ key: "Shift", ...dash }, { key: "L-Click", ...arrow }, { key: "R-Click", ...shotgun }, { key: "E", ...blast }]
+      : [{ key: "L-Click", ...arrow }, { key: "Q", ...shotgun }, { key: "W", ...dash }, { key: "E", ...blast }];
 
   const size = 60;
   const gap = 16;

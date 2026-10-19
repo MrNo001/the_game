@@ -54,6 +54,35 @@
       #menu button:hover {
         background: #81d4fa;
       }
+      #controls-picker {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        font-size: 14px;
+      }
+      #menu #controls-picker button {
+        width: 100px;
+        padding: 6px;
+        font-size: 14px;
+        color: #aaa;
+        background: #2a2a33;
+        border-radius: 0;
+      }
+      #menu #controls-picker button:first-child {
+        border-radius: 6px 0 0 6px;
+      }
+      #menu #controls-picker button:last-child {
+        border-radius: 0 6px 6px 0;
+      }
+      #menu #controls-picker button:hover {
+        color: white;
+      }
+      #menu #controls-picker button.selected {
+        color: black;
+        background: #4fc3f7;
+      }
       #exit-button {
         position: absolute; /* in the right corner of the ability bar */
         right: 20px;
@@ -79,13 +108,24 @@
         <h1>Arena</h1>
         <button id="play-button">Play</button>
         <button id="training-button">Training</button>
+        <div id="controls-picker">
+          Controls
+          <div>
+            <button data-controls="classic">WASD</button><button data-controls="click">Click to move</button>
+          </div>
+        </div>
       </div>
       <button id="exit-button" hidden>Exit training</button>
     </div>
-    <p>
+    <p id="help-classic">
       You are blue &middot; WASD to move &middot; hold Shift to charge a dash &middot;
       hold the left mouse button to charge an arrow &middot; right-click to fire the shotgun &middot;
       E to mark a blast &middot; Esc for the menu
+    </p>
+    <p id="help-click" hidden>
+      You are blue &middot; right-click to move (hold it to follow the mouse) &middot;
+      hold the left mouse button to charge an arrow &middot; Q to fire the shotgun &middot;
+      hold W to charge a dash &middot; E to mark a blast &middot; Esc for the menu
     </p>
     <script type="module" src="./main.ts"></script>
   </body>

@@ -52,9 +52,10 @@ export interface Input {
   left: boolean;
   right: boolean;
   dash: boolean; // Shift is held
-  shoot: boolean; // left mouse button is held
-  shotgun: boolean; // right mouse button is held
+  shoot: boolean; // bow button is held
+  shotgun: boolean; // shotgun button is held
   blast: boolean; // E is held
+  move: boolean; // click-to-move button is held: walk to the mouse
   aimX: number; // mouse position in the arena
   aimY: number;
 }
@@ -65,6 +66,7 @@ export interface Player {
   y: number;
   aimAngle: number; // radians, pointing at the mouse
   aimDistance: number; // pixels from the player to the mouse
+  moveTarget: { x: number; y: number } | null; // where the player is walking to (click-to-move)
   health: number;
   score: number; // how many times this player has killed the other one
   dashCharge: number; // seconds Shift has been held (0 = not charging)
@@ -157,6 +159,7 @@ export function createPlayer(id: number): Player {
     y: ARENA_HEIGHT / 2,
     aimAngle: id === 1 ? 0 : Math.PI,
     aimDistance: 0,
+    moveTarget: null,
     health: MAX_HEALTH,
     score: 0,
     dashCharge: 0,
@@ -198,6 +201,14 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
   p.arrowCooldown = Math.max(0, p.arrowCooldown - dt);
   p.blastCooldown = Math.max(0, p.blastCooldown - dt);
 
+  // Click-to-move: while the button is held, keep following the mouse
+  if (input.move) {
+    p.moveTarget = {
+      x: clamp(input.aimX, PLAYER_RADIUS, ARENA_WIDTH - PLAYER_RADIUS),
+      y: clamp(input.aimY, PLAYER_RADIUS, ARENA_HEIGHT - PLAYER_RADIUS),
+    };
+  }
+
   if (p.dashTimeLeft > 0) {
     // Mid-dash: fly in the dash direction, ignoring WASD
     const time = Math.min(dt, p.dashTimeLeft);
@@ -212,6 +223,18 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
     if (length > 0) {
       p.x += (dx / length) * PLAYER_SPEED * dt;
       p.y += (dy / length) * PLAYER_SPEED * dt;
+    } else if (p.moveTarget) {
+      // Walking to the clicked spot, stopping once we get there
+      const distance = Math.hypot(p.moveTarget.x - p.x, p.moveTarget.y - p.y);
+      const move = PLAYER_SPEED * dt;
+      if (distance <= move) {
+        p.x = p.moveTarget.x;
+        p.y = p.moveTarget.y;
+        p.moveTarget = null;
+      } else {
+        p.x += ((p.moveTarget.x - p.x) / distance) * move;
+        p.y += ((p.moveTarget.y - p.y) / distance) * move;
+      }
     }
   }
 
@@ -224,17 +247,24 @@ function updatePlayer(state: GameState, p: Player, input: Input, dt: number) {
   updateShotgun(state, p, input, dt);
 }
 
-// Hold Shift to charge, release to dash toward the mouse.
+// Hold the dash key to charge, release to dash toward the mouse.
 function updateDash(p: Player, input: Input, dt: number) {
   if (input.dash && p.dashCooldown === 0) {
     p.dashCharge = Math.min(p.dashCharge + dt, DASH_MAX_CHARGE);
   } else if (p.dashCharge > 0) {
-    // Shift was just released
-    p.dashAngle = p.aimAngle;
-    p.dashTimeLeft = dashDistance(p.dashCharge) / DASH_SPEED;
+    // The dash key was just released
+    startDash(p, p.aimAngle, dashDistance(p.dashCharge));
     p.dashCooldown = DASH_COOLDOWN;
     p.dashCharge = 0;
   }
+}
+
+// Throws the player in a straight line at dash speed.
+// Like in other click-to-move games, this cancels the walk to the clicked spot.
+function startDash(p: Player, angle: number, distance: number) {
+  p.dashAngle = angle;
+  p.dashTimeLeft = distance / DASH_SPEED;
+  p.moveTarget = null;
 }
 
 // Hold the mouse to charge, release to shoot toward the mouse.
@@ -276,7 +306,7 @@ function updateBlastCast(state: GameState, p: Player, input: Input, dt: number) 
   }
 }
 
-// Right-click fires a short cone toward the mouse. You get two shells;
+// The shotgun button fires a short cone toward the mouse. You get two shells;
 // once both are used, they reload together. The recoil throws you backwards.
 function updateShotgun(state: GameState, p: Player, input: Input, dt: number) {
   if (p.shotgunReload > 0) {
@@ -297,8 +327,7 @@ function updateShotgun(state: GameState, p: Player, input: Input, dt: number) {
   }
 
   // Recoil: a dash in the opposite direction (this also cuts short a dash in progress)
-  p.dashAngle = p.aimAngle + Math.PI;
-  p.dashTimeLeft = SHOTGUN_KNOCKBACK / DASH_SPEED;
+  startDash(p, p.aimAngle + Math.PI, SHOTGUN_KNOCKBACK);
 }
 
 // Does the shooter's cone touch any part of the target's body?
